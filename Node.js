@@ -1,7 +1,6 @@
 const emailValidator = require('email-validator');
 const dns = require('dns');
 const { SMTPClient } = require('smtp-client');
-const blacklistCheck = require('blacklist-check');
 const { promisify } = require('util');
 const resolveMx = promisify(dns.resolveMx);
 
@@ -63,18 +62,7 @@ const validateEmail = async (email) => {
     results.errors.push('Anti-Spam Check Failed');
   }
 
-  // 5. Reputation & Blacklist Status
-  try {
-    const blacklistStatus = await blacklistCheck(email);
-    if (blacklistStatus.blacklisted) {
-      results.errors.push('Blacklisted');
-      return results;
-    }
-  } catch (err) {
-    results.errors.push('Blacklist Check Failed');
-  }
-
-  // 6. Mailbox Availability (SMTP validation already checks this, but you can add additional checks here if needed)
+  // 5. Mailbox Availability (SMTP validation already checks this)
   
   // Final result
   results.isValid = results.errors.length === 0;
