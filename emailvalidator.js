@@ -123,3 +123,25 @@ validateEmails(emails)
   .catch((err) => {
     console.error('Error validating emails:', err);
   });
+export async function onRequest(request) {
+  try {
+    const { emails } = await request.json();
+
+    // Your existing email validation logic
+    const validateEmail = async (email) => {
+      // ... (your validation logic)
+      return { email, isValid: true }; // Placeholder
+    };
+
+    const results = await Promise.all(emails.map(validateEmail));
+
+    return new Response(JSON.stringify(results), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: 'Invalid request' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+        }
