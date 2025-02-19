@@ -1,15 +1,22 @@
 {
-  "name": "email-validator-api",
-  "version": "1.0.0",
-  "description": "An email validator API using Node.js",
-  "main": "emailValidator.js",
+  "name": "remix-email-validator",
+  "private": true,
   "scripts": {
-    "start": "node emailValidator.js"
+    "dev": "remix dev",
+    "build": "remix build",
+    "start": "cross-env NODE_ENV=production node server.js"
   },
   "dependencies": {
-    "email-validator": "^2.0.4",
-    "smtp-client": "^0.3.3"
+    "@remix-run/express": "^1.19.3",
+    "@remix-run/node": "^1.19.3",
+    "dns": "^0.2.2",
+    "express": "^4.18.2",
+    "smtp-connection": "^4.0.2",
+    "validator": "^13.11.0"
   },
-  "author": "Hasan Mahmud",
-  "license": "MIT"
+  "devDependencies": {
+    "@remix-run/dev": "^1.19.3",
+    "@types/node": "^18.11.18",
+    "cross-env": "^7.0.3"
+  }
 }
