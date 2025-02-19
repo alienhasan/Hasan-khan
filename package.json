@@ -1,0 +1,12 @@
+{
+  "name": "email-validator-api",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "mkdir -p build/client && cp -r public/* build/client/",
+    "start": "node emailValidator.js"
+  },
+  "dependencies": {
+    "dns": "^2.0.0",
+    "net": "^1.0.2"
+  }
+}
