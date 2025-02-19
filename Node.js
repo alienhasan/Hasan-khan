@@ -1,85 +1,118 @@
-const emailValidator = require('email-validator');
-const dns = require('dns');
-const { SMTPClient } = require('smtp-client');
-const { promisify } = require('util');
-const resolveMx = promisify(dns.resolveMx);
+import type { ActionFunctionArgs } from "@remix-run/node";
+import { json } from "@remix-run/node";
+import validator from "validator";
+import dns from "dns/promises";
+import { SMTPConnection } from "smtp-connection";
 
-// Function to validate each email
-const validateEmail = async (email) => {
-  const results = {
-    email,
-    isValid: false,
-    errors: [],
+export async function action({ request }: ActionFunctionArgs) {
+  const { emails } = await request.json();
+
+  const validateEmail = async (email: string) => {
+    const result: Record<string, any> = { email, isValid: false };
+    
+    // 1. Syntactic Validity
+    result.syntacticValidity = validator.isEmail(email, { rfc_5322: true });
+    if (!result.syntacticValidity) return result;
+
+    const domain = email.split("@")[1];
+    
+    // 2. Domain Validity
+    try {
+      const mxRecords = await dns.resolveMx(domain);
+      result.domainValidity = mxRecords.length > 0;
+    } catch {
+      result.domainValidity = false;
+    }
+    if (!result.domainValidity) return result;
+
+    // 3. SMTP Deliverability & 6. Mailbox Availability
+    result.smtpDeliverability = await verifySmtp(email, domain);
+    result.mailboxAvailable = result.smtpDeliverability;
+
+    // 4. Authentication & Anti-Spam
+    result.spf = await checkSPF(domain);
+    result.dmarc = await checkDMARC(domain);
+    result.authMeasures = result.spf && result.dmarc;
+
+    // 5. User Engagement (Not implementable without data)
+    result.userEngagement = "N/A (Requires external data)";
+
+    // Final validation
+    result.isValid = result.syntacticValidity &&
+      result.domainValidity &&
+      result.smtpDeliverability &&
+      result.authMeasures;
+
+    return result;
   };
 
-  // 1. Syntactic Validity (RFC 5322 Compliance)
-  if (!emailValidator.validate(email)) {
-    results.errors.push('Syntactic Invalid');
-    return results;
-  }
+  const results = await Promise.all(
+    emails.map((email: string) => validateEmail(email))
+  );
 
-  // 2. Domain Validity
-  const domain = email.split('@')[1];
+  return json({ results });
+}
+
+// SMTP Verification
+async function verifySmtp(email: string, domain: string): Promise<boolean> {
   try {
-    const mxRecords = await resolveMx(domain);
-    if (mxRecords.length === 0) {
-      results.errors.push('Invalid Domain');
-      return results;
-    }
-  } catch (err) {
-    results.errors.push('Domain Lookup Failed');
-    return results;
+    const mxRecords = await dns.resolveMx(domain);
+    mxRecords.sort((a, b) => a.priority - b.priority);
+    const mxHost = mxRecords[0].exchange;
+
+    const connection = new SMTPConnection({
+      port: 25,
+      host: mxHost,
+      timeout: 10000,
+    });
+
+    await new Promise((resolve, reject) => {
+      connection.on("connect", resolve);
+      connection.on("error", reject);
+      connection.connect();
+    });
+
+    await new Promise((resolve, reject) => {
+      connection.ehlo("example.com", (err) => (err ? reject(err) : resolve(true)));
+    });
+
+    const fromAccepted = await new Promise((resolve) => {
+      connection.command("MAIL FROM:<noreply@example.com>", (err) => {
+        resolve(!err);
+      });
+    });
+
+    if (!fromAccepted) return false;
+
+    const toAccepted = await new Promise((resolve) => {
+      connection.command(`RCPT TO:<${email}>`, (err) => {
+        resolve(!err);
+      });
+    });
+
+    connection.quit();
+    return !!toAccepted;
+  } catch {
+    return false;
   }
+}
 
-  // 3. SMTP Deliverability
-  const mxRecords = await resolveMx(domain);
-  const smtpClient = new SMTPClient({
-    host: mxRecords[0].exchange,
-    port: 25,
-    tls: true,
-  });
-
+// SPF Check
+async function checkSPF(domain: string): Promise<boolean> {
   try {
-    await smtpClient.connect();
-    await smtpClient.greet();
-    await smtpClient.mail({ from: 'test@example.com' });
-    await smtpClient.rcpt({ to: email });
-    await smtpClient.quit();
-  } catch (err) {
-    results.errors.push('SMTP Deliverability Failed');
-    return results;
+    const records = await dns.resolveTxt(domain);
+    return records.some(record => record.join("").startsWith("v=spf1"));
+  } catch {
+    return false;
   }
+}
 
-  // 4. Authentication & Anti-Spam Measures (SPF, DKIM, DMARC)
+// DMARC Check
+async function checkDMARC(domain: string): Promise<boolean> {
   try {
-    const txtRecords = await promisify(dns.resolveTxt)(domain);
-    const spfRecord = txtRecords.some(record => record[0].includes('v=spf1'));
-    const dkimRecord = txtRecords.some(record => record[0].includes('v=DKIM1'));
-    if (!spfRecord || !dkimRecord) {
-      results.errors.push('Authentication Failed (SPF/DKIM)');
-    }
-  } catch (err) {
-    results.errors.push('Anti-Spam Check Failed');
+    const records = await dns.resolveTxt(`_dmarc.${domain}`);
+    return records.some(record => record.join("").includes("v=DMARC1"));
+  } catch {
+    return false;
   }
-
-  // 5. Mailbox Availability (SMTP validation already checks this)
-  
-  // Final result
-  results.isValid = results.errors.length === 0;
-  return results;
-};
-
-// Validate multiple emails
-const validateEmails = async (emails) => {
-  const emailList = emails.split(',');
-  const results = await Promise.all(emailList.map(email => validateEmail(email)));
-  return results;
-};
-
-// Example usage: Pass a comma-separated list of emails
-const emailsToCheck = 'email1@example.com,email2@example.com';
-validateEmails(emailsToCheck).then(results => {
-  console.log(JSON.stringify(results, null, 2));
-}).catch(err => {
-  console.error('Error validating emails:', err);
-});
+                         }
