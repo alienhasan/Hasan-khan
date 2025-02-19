@@ -1,15 +1,15 @@
 {
-  "name": "email-validator",
+  "name": "email-validator-api",
   "version": "1.0.0",
-  "description": "An email validator API using Cloudflare",
+  "description": "An email validator API using Node.js",
   "main": "emailValidator.js",
   "scripts": {
     "start": "node emailValidator.js"
   },
   "dependencies": {
     "email-validator": "^2.0.4",
-    "dns": "^0.2.2",
-    "smtp-client": "^1.0.0",
-    "blacklist-check": "^1.0.0"
-  }
+    "smtp-client": "^0.3.3"
+  },
+  "author": "Hasan Mahmud",
+  "license": "MIT"
 }
